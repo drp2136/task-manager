@@ -1,0 +1,10 @@
+GET: curl --location 'localhost:8080/public/tasks'
+
+POST: curl --location 'localhost:8080/tasks/' \
+--header 'Authorization: Bearer asdf' \
+--header 'Content-Type: application/json' \
+--data '{
+    "title":"task-1",
+    "description":"task description 1",
+    "status":"pending"
+}'
