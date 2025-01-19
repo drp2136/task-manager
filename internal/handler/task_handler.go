@@ -2,36 +2,211 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"task-manager/internal/model"
 	"task-manager/internal/service"
+
+	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
+	"github.com/gofrs/uuid"
 )
 
-type TaskHandler struct {
-	TaskService *service.TaskService
+type (
+	ITaskHandler interface {
+		GetTasks(*gin.Context)
+		CreateTask(*gin.Context)
+		GetTaskByID(*gin.Context)
+		UpdateTaskByID(*gin.Context)
+		DeleteTaskByID(*gin.Context)
+	}
+
+	TaskHandler struct {
+		TaskService *service.TaskService
+	}
+)
+
+const (
+	ErrInvalidJSONBody       = "invalid JSON body"
+	ErrInvalidRequestBody    = "invalid request body"
+	ErrTaskNotFound          = "task not found"
+	ErrTaskAlreadyCompleted  = "task already completed"
+	ErrTaskAlreadyInProgress = "task already in progress"
+	ErrTaskAlreadyPending    = "task already pending"
+)
+
+var validate *validator.Validate
+
+func NewTaskHandler(taskService *service.TaskService) *TaskHandler {
+	return &TaskHandler{TaskService: taskService}
 }
 
-func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
+/*
+	Handler functions
+*/
+
+func (h *TaskHandler) GetTasks(c *gin.Context) {
 	tasks, err := h.TaskService.GetAllTasks()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
 		return
 	}
 
-	json.NewEncoder(w).Encode(tasks)
+	c.JSON(http.StatusOK, tasks)
 }
 
-func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
+func (h *TaskHandler) CreateTask(c *gin.Context) {
 	var task model.Task
-	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
-		http.Error(w, "Invalid input", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&task); err != nil {
+		errMsg := handleValidationError(err)
+		c.JSON(http.StatusBadRequest, &model.Response{Messages: errMsg})
 		return
 	}
 
+	task.ID, _ = uuid.NewV7()
 	if err := h.TaskService.CreateTask(&task); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
+	c.JSON(http.StatusCreated, task)
+}
+
+func (h *TaskHandler) GetTaskByID(c *gin.Context) {
+	// Get the task ID from the URL
+	id := c.Param("taskId")
+
+	// Validate the task ID
+	taskId, err := uuid.FromString(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, &model.Response{Message: http.StatusText(http.StatusBadRequest)})
+		return
+	}
+
+	// Fetch the task from the database
+	task, err := h.TaskService.GetTaskByID(taskId)
+	if err != nil {
+		if strings.EqualFold(err.Error(), "record not found") {
+			c.JSON(http.StatusNotFound, &model.Response{Message: ErrTaskNotFound})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+func (h *TaskHandler) UpdateTaskByID(c *gin.Context) {
+	// Get the task ID from the URL
+	id := c.Param("taskId")
+
+	// Validate the task ID
+	taskId, err := uuid.FromString(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, &model.Response{Message: http.StatusText(http.StatusBadRequest)})
+		return
+	}
+
+	// Fetch the task from the database
+	_, err = h.TaskService.GetTaskByID(taskId)
+	if err != nil {
+		if strings.EqualFold(err.Error(), "record not found") {
+			c.JSON(http.StatusNotFound, &model.Response{Message: ErrTaskNotFound})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
+		return
+	}
+
+	// Bind the JSON body to the task model
+	var task model.Task
+	if err := c.ShouldBindJSON(&task); err != nil {
+		errMsg := handleValidationError(err)
+		c.JSON(http.StatusBadRequest, &model.Response{Messages: errMsg})
+		return
+	}
+
+	// Update the task in the database
+	if err := h.TaskService.UpdateTask(taskId, &task); err != nil {
+		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
+		return
+	}
+
+	// Return the updated task
+	c.JSON(http.StatusOK, &model.Response{Message: "Task updated successfully"})
+}
+
+func (h *TaskHandler) DeleteTaskByID(c *gin.Context) {
+	// Get the task ID from the URL
+	id := c.Param("taskId")
+
+	// Validate the task ID
+	taskId, err := uuid.FromString(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, &model.Response{Message: http.StatusText(http.StatusBadRequest)})
+		return
+	}
+
+	// Delete the task from the database
+	if err := h.TaskService.DeleteTask(taskId); err != nil {
+		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
+		return
+	}
+
+	// Successfully delete the task
+	c.JSON(http.StatusOK, &model.Response{Message: "Task deleted successfully"})
+}
+
+/*
+	Suporting functions
+*/
+
+func ReturnResponse(rw http.ResponseWriter, response any, responseCode int) {
+	byteResponse, _ := json.Marshal(response)
+	rw.WriteHeader(responseCode)
+	_, _ = rw.Write(byteResponse)
+}
+
+// ValidateRequestInputs: validate inputs params for the incoming requests
+func ValidateRequestInputs(content any) map[string]string {
+	if err := validate.Struct(content); err != nil {
+		return handleValidationError(err)
+	}
+	return nil
+}
+
+// handleValidationError customizes the error message when validation fails
+func handleValidationError(err error) map[string]string {
+	// Cast the error to a ValidationErrors type
+	validationErrors, _ := err.(validator.ValidationErrors)
+
+	// Create a map of custom error messages
+	errorsMap := make(map[string]string)
+
+	// Iterate through validation errors and generate custom error messages
+	for _, e := range validationErrors {
+		field := strings.ToLower(e.Field())
+		switch e.Tag() {
+		case "email":
+			errorsMap[field] = "it must be a valid email address"
+		case "max":
+			errorsMap[field] = fmt.Sprintf("it can be at most %s characters long", e.Param())
+		case "min":
+			errorsMap[field] = fmt.Sprintf("it must be at least %s characters long", e.Param())
+		case "name":
+			errorsMap[field] = "it must adhere to valid naming conventions: no digits or special characters."
+		case "oneof":
+			errorsMap[field] = fmt.Sprintf("it must be one of the following [%s]", strings.Join(strings.Split(e.Param(), " "), ", "))
+		case "phone":
+			errorsMap[field] = "it must be a valid phone number"
+		case "required":
+			errorsMap[field] = "this is a required field"
+		default:
+			errorsMap[field] = "invalid value provided"
+		}
+	}
+
+	return errorsMap
 }

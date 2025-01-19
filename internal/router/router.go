@@ -1,38 +1,28 @@
 package router
 
 import (
-	"net/http"
 	"task-manager/internal/handler"
 	"task-manager/internal/middleware"
+	"task-manager/internal/service"
 
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(taskHandler *handler.TaskHandler) *mux.Router {
-	router := mux.NewRouter()
+func SetupRouter(router *gin.Engine, TaskService *service.TaskService) {
+	healthzHandler := handler.NewHealthzHandler()
+	taskHandler := handler.NewTaskHandler(TaskService)
 
-	router.Use(addDefaultHeaders)
+	// Healthz endpoint
+	activity := router.Group("/activity")
+	activity.GET("/healthz", healthzHandler.GetHealthz) // Get Health status
 
-	public := router.PathPrefix("/public").Subrouter()
-	public.HandleFunc("/tasks", taskHandler.GetTasks).Methods("GET")
+	// Task endpoints
+	tasks := router.Group("/tasks")
+	tasks.GET("/", taskHandler.GetTasks) // Get All Tasks
 
-	protected := router.PathPrefix("/tasks").Subrouter()
-	protected.Use(middleware.AuthMiddleware)
-	protected.HandleFunc("/", taskHandler.CreateTask).Methods("POST")
-
-	return router
-}
-
-// Code has not been tested.
-func addDefaultHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" {
-			rw.Header().Set("Access-Control-Allow-Origin", origin)
-		}
-		rw.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token")
-		rw.Header().Set("Access-Control-Allow-Credentials", "true")
-		rw.Header().Set("Content-Type", "application/json")
-		next.ServeHTTP(rw, r)
-	})
+	tasks.Use(middleware.AuthMiddleware)                 // Auth Middleware added
+	tasks.POST("/", taskHandler.CreateTask)              // Create Task
+	tasks.GET("/:taskId", taskHandler.GetTaskByID)       // Get Task by ID
+	tasks.PUT("/:taskId", taskHandler.UpdateTaskByID)    // Update Task by ID
+	tasks.DELETE("/:taskId", taskHandler.DeleteTaskByID) // Delete Task by ID
 }

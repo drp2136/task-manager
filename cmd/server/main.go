@@ -3,11 +3,11 @@ package main
 import (
 	"log"
 	"net/http"
-	"task-manager/internal/handler"
 	"task-manager/internal/model"
 	"task-manager/internal/router"
 	"task-manager/internal/service"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
 )
@@ -23,9 +23,10 @@ func main() {
 	db.AutoMigrate(&model.Task{})
 
 	taskService := &service.TaskService{DB: db}
-	taskHandler := &handler.TaskHandler{TaskService: taskService}
 
-	r := router.SetupRouter(taskHandler)
+	r := gin.Default()
+
+	router.SetupRouter(r, taskService)
 
 	log.Fatal(http.ListenAndServe(":8080", r))
 }

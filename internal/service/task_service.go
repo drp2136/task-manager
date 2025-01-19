@@ -3,6 +3,7 @@ package service
 import (
 	"task-manager/internal/model"
 
+	"github.com/gofrs/uuid"
 	"github.com/jinzhu/gorm"
 )
 
@@ -20,16 +21,16 @@ func (s *TaskService) GetAllTasks() ([]model.Task, error) {
 	return tasks, err
 }
 
-func (s *TaskService) GetTaskByID(id uint) (*model.Task, error) {
+func (s *TaskService) GetTaskByID(id uuid.UUID) (*model.Task, error) {
 	var task model.Task
-	err := s.DB.First(&task, id).Error
+	err := s.DB.First(&task, "id = ?", id).Error
 	return &task, err
 }
 
-func (s *TaskService) UpdateTask(id uint, task *model.Task) error {
+func (s *TaskService) UpdateTask(id uuid.UUID, task *model.Task) error {
 	return s.DB.Model(&model.Task{}).Where("id = ?", id).Updates(task).Error
 }
 
-func (s *TaskService) DeleteTask(id uint) error {
-	return s.DB.Delete(&model.Task{}, id).Error
+func (s *TaskService) DeleteTask(id uuid.UUID) error {
+	return s.DB.Delete(&model.Task{}, "id = ?", id).Error
 }

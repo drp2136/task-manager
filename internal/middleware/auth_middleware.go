@@ -1,39 +1,61 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenString := r.Header.Get("Authorization")
-		if tokenString == "" {
-			http.Error(w, "Authorization header missing", http.StatusUnauthorized)
-			return
-		}
+func AuthMiddleware(c *gin.Context) {
+	tokenString := c.GetHeader("Authorization")
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Authorization header missing"})
+		c.Abort()
+		return
+	}
 
-		fields := strings.Fields(tokenString)
-		accessToken := fields[1]
-		if len(fields) == 2 {
-			authorizationType := fields[0]
-			if !strings.EqualFold(authorizationType, "Bearer") {
-				fmt.Println("unsupported authorization type " + authorizationType)
-				return
-			}
+	// Validate the input token
+	if !validateInputToken(tokenString) {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "invalid authorization header format"})
+		c.Abort()
+		return
+	}
 
-			fmt.Println(accessToken)
-		} else {
-			fmt.Println("invalid authorization header format")
-		}
+	// Parse the token, and extract the claims
+	// codes..
 
-		// token, err := auth.ParseToken(accessToken)
-		// if err != nil || !token.Valid {
-		// 	http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
-		// 	return
-		// }
+	// Call the next handler
+	c.Next()
+}
 
-		next.ServeHTTP(w, r)
-	})
+func validateInputToken(s string) bool {
+	// Check if the input string is empty
+	if s == "" {
+		return false
+	}
+
+	fields := strings.Fields(s)
+	// Check if the input string has exactly 2 fields
+	if len(fields) != 2 {
+		return false
+	}
+	// Check if the first field is "Bearer"
+	if fields[0] != "Bearer" {
+		return false
+	}
+
+	// check for 2nd part
+	parts := strings.Split(fields[1], ".")
+	// Check if there are exactly 3 parts
+	if len(parts) != 3 {
+		return false
+	}
+	// Check if the middle part is not an empty string
+	if parts[1] == "" {
+		return false
+	}
+
+	// Return true if all conditions are satisfied
+	return true
 }

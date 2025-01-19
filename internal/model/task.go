@@ -1,9 +1,13 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/gofrs/uuid"
+)
 
 type Task struct {
-	ID          uint      `gorm:"primaryKey"`
+	ID          uuid.UUID `json:"id" gorm:"primaryKey"`
 	Title       string    `json:"title" binding:"required"`
 	Description string    `json:"description" binding:"required"`
 	Status      string    `json:"status" binding:"required,oneof=pending in-progress completed"`
