@@ -23,7 +23,7 @@ type (
 	}
 
 	TaskHandler struct {
-		TaskService *service.TaskService
+		TaskService service.ITaskService
 	}
 )
 
@@ -38,7 +38,7 @@ const (
 
 var validate *validator.Validate
 
-func NewTaskHandler(taskService *service.TaskService) *TaskHandler {
+func NewTaskHandler(taskService service.ITaskService) *TaskHandler {
 	return &TaskHandler{TaskService: taskService}
 }
 
@@ -47,7 +47,10 @@ func NewTaskHandler(taskService *service.TaskService) *TaskHandler {
 */
 
 func (h *TaskHandler) GetTasks(c *gin.Context) {
-	tasks, err := h.TaskService.GetAllTasks()
+	ctx := c.Request.Context()
+
+	// Fetch all tasks from the database
+	tasks, err := h.TaskService.GetAllTasks(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
 		return
@@ -57,7 +60,10 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 }
 
 func (h *TaskHandler) CreateTask(c *gin.Context) {
+	ctx := c.Request.Context()
 	var task model.Task
+
+	// Bind the JSON body to the task model
 	if err := c.ShouldBindJSON(&task); err != nil {
 		errMsg := handleValidationError(err)
 		c.JSON(http.StatusBadRequest, &model.Response{Messages: errMsg})
@@ -65,7 +71,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	}
 
 	task.ID, _ = uuid.NewV7()
-	if err := h.TaskService.CreateTask(&task); err != nil {
+	if err := h.TaskService.CreateTask(ctx, &task); err != nil {
 		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
 		return
 	}
@@ -74,6 +80,8 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 }
 
 func (h *TaskHandler) GetTaskByID(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	// Get the task ID from the URL
 	id := c.Param("taskId")
 
@@ -85,7 +93,7 @@ func (h *TaskHandler) GetTaskByID(c *gin.Context) {
 	}
 
 	// Fetch the task from the database
-	task, err := h.TaskService.GetTaskByID(taskId)
+	task, err := h.TaskService.GetTaskByID(ctx, taskId)
 	if err != nil {
 		if strings.EqualFold(err.Error(), "record not found") {
 			c.JSON(http.StatusNotFound, &model.Response{Message: ErrTaskNotFound})
@@ -99,6 +107,8 @@ func (h *TaskHandler) GetTaskByID(c *gin.Context) {
 }
 
 func (h *TaskHandler) UpdateTaskByID(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	// Get the task ID from the URL
 	id := c.Param("taskId")
 
@@ -110,7 +120,7 @@ func (h *TaskHandler) UpdateTaskByID(c *gin.Context) {
 	}
 
 	// Fetch the task from the database
-	_, err = h.TaskService.GetTaskByID(taskId)
+	_, err = h.TaskService.GetTaskByID(ctx, taskId)
 	if err != nil {
 		if strings.EqualFold(err.Error(), "record not found") {
 			c.JSON(http.StatusNotFound, &model.Response{Message: ErrTaskNotFound})
@@ -129,7 +139,7 @@ func (h *TaskHandler) UpdateTaskByID(c *gin.Context) {
 	}
 
 	// Update the task in the database
-	if err := h.TaskService.UpdateTask(taskId, &task); err != nil {
+	if err := h.TaskService.UpdateTask(ctx, taskId, &task); err != nil {
 		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
 		return
 	}
@@ -139,6 +149,8 @@ func (h *TaskHandler) UpdateTaskByID(c *gin.Context) {
 }
 
 func (h *TaskHandler) DeleteTaskByID(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	// Get the task ID from the URL
 	id := c.Param("taskId")
 
@@ -150,7 +162,7 @@ func (h *TaskHandler) DeleteTaskByID(c *gin.Context) {
 	}
 
 	// Delete the task from the database
-	if err := h.TaskService.DeleteTask(taskId); err != nil {
+	if err := h.TaskService.DeleteTask(ctx, taskId); err != nil {
 		c.JSON(http.StatusInternalServerError, &model.Response{Message: http.StatusText(http.StatusInternalServerError)})
 		return
 	}
@@ -167,14 +179,6 @@ func ReturnResponse(rw http.ResponseWriter, response any, responseCode int) {
 	byteResponse, _ := json.Marshal(response)
 	rw.WriteHeader(responseCode)
 	_, _ = rw.Write(byteResponse)
-}
-
-// ValidateRequestInputs: validate inputs params for the incoming requests
-func ValidateRequestInputs(content any) map[string]string {
-	if err := validate.Struct(content); err != nil {
-		return handleValidationError(err)
-	}
-	return nil
 }
 
 // handleValidationError customizes the error message when validation fails

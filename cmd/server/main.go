@@ -22,7 +22,8 @@ func main() {
 
 	db.AutoMigrate(&model.Task{})
 
-	taskService := &service.TaskService{DB: db}
+	// taskService := &service.TaskService{DB: db}
+	taskService := service.NewTaskService(db)
 
 	r := gin.Default()
 

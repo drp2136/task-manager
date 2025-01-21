@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(router *gin.Engine, TaskService *service.TaskService) {
+func SetupRouter(router *gin.Engine, TaskService service.ITaskService) {
 	healthzHandler := handler.NewHealthzHandler()
 	taskHandler := handler.NewTaskHandler(TaskService)
 
