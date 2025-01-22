@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -35,8 +34,6 @@ const (
 	ErrTaskAlreadyInProgress = "task already in progress"
 	ErrTaskAlreadyPending    = "task already pending"
 )
-
-var validate *validator.Validate
 
 func NewTaskHandler(taskService service.ITaskService) *TaskHandler {
 	return &TaskHandler{TaskService: taskService}
@@ -174,12 +171,6 @@ func (h *TaskHandler) DeleteTaskByID(c *gin.Context) {
 /*
 	Suporting functions
 */
-
-func ReturnResponse(rw http.ResponseWriter, response any, responseCode int) {
-	byteResponse, _ := json.Marshal(response)
-	rw.WriteHeader(responseCode)
-	_, _ = rw.Write(byteResponse)
-}
 
 // handleValidationError customizes the error message when validation fails
 func handleValidationError(err error) map[string]string {
