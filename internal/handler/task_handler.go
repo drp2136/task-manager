@@ -187,7 +187,7 @@ func handleValidationError(err error) map[string]string {
 		case "email":
 			errorsMap[field] = "it must be a valid email address"
 		case "max":
-			errorsMap[field] = fmt.Sprintf("it can be at most %s characters long", e.Param())
+			errorsMap[field] = fmt.Sprintf("it must be at most %s characters long", e.Param())
 		case "min":
 			errorsMap[field] = fmt.Sprintf("it must be at least %s characters long", e.Param())
 		case "name":

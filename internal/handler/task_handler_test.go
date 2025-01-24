@@ -6,13 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"task-manager/internal/mocks"
 	"task-manager/internal/model"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -22,7 +26,29 @@ var (
 	errMock         = errors.New("internal error")
 	errMockNotFound = errors.New("record not found")
 	uuid1, _        = uuid.NewV7()
+
+	// for validation
+	nameValidatePattern        = regexp.MustCompile(`^[A-Za-zÀ-ÿ]+([ -][A-Za-zÀ-ÿ]+)*$`)
+	phoneNumberValidatePattern = regexp.MustCompile(`^\d{10}$`)
 )
+
+type TestStruct struct {
+	Email    string `json:"email,omitempty" binding:"email"`
+	FName    string `json:"fName,omitempty" binding:"name,max=20"`
+	LName    string `json:"lName,omitempty" binding:"name,max=20"`
+	Gender   string `json:"gender,omitempty" binding:"oneof=male female other"`
+	Phone    string `json:"phone,omitempty" binding:"phone"`
+	Address  string `json:"address,omitempty" binding:"required"`
+	Username string `json:"username,omitempty" binding:"min=8"`
+}
+
+func init() {
+	// Register the custom validation function
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		v.RegisterValidation("name", NameValidator)   // for Name regex validation
+		v.RegisterValidation("phone", PhoneValidator) // for Phone regex validation
+	}
+}
 
 func Test_GetTasks(t *testing.T) {
 	// Create a new http request
@@ -545,4 +571,87 @@ func Test_DeleteTaskByID(t *testing.T) {
 		expectedResp := `{"message":"Task deleted successfully"}`
 		require.Equal(t, expectedResp, resp)
 	})
+}
+
+func TestHandleValidationError(t *testing.T) {
+	// Define the test cases
+	tests := []struct {
+		name          string
+		body          TestStruct
+		expectedError map[string]string
+	}{
+		{
+			name: "Error scenario",
+			body: TestStruct{
+				Email:    "invalid-email",
+				FName:    "Lorem Ipsum dol2nd sit amet Jr. 123",
+				LName:    "Lorem Ipsum dollar sit amet Jr",
+				Gender:   "random",
+				Phone:    "6238023349584",
+				Username: "random",
+			},
+			expectedError: map[string]string{
+				"email":    "it must be a valid email address",
+				"fname":    "it must adhere to valid naming conventions: no digits or special characters.",
+				"lname":    "it must be at most 20 characters long",
+				"gender":   "it must be one of the following [male, female, other]",
+				"phone":    "it must be a valid phone number",
+				"address":  "this is a required field",
+				"username": "it must be at least 8 characters long",
+			},
+		},
+		{
+			name: "Success scenario",
+			body: TestStruct{
+				Email:    "abc@mno.xyz",
+				FName:    "Lorem Ipsum do",
+				LName:    "Lorem Ipsum dollar",
+				Gender:   "male",
+				Phone:    "6238023349",
+				Address:  "45 High Street, Bristol, BS1 4AT, United Kingdom",
+				Username: "QuantumNinja",
+			},
+			expectedError: nil,
+		},
+	}
+
+	// Run through the test cases
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c = &gin.Context{}
+			c.Request = &http.Request{}
+			jsonBody, _ := json.Marshal(tt.body)
+			c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonBody))
+			var obj TestStruct
+
+			// Bind the JSON body
+			err := c.ShouldBindJSON(&obj)
+
+			// Call the function under test
+			result := handleValidationError(err)
+
+			// Assert the result
+			if len(result) != len(tt.expectedError) {
+				t.Errorf("Expected %v, but got %v", tt.expectedError, result)
+			}
+
+			for field, expectedMsg := range tt.expectedError {
+				if result[field] != expectedMsg {
+					t.Errorf("For field %s, expected %s, but got %s", field, expectedMsg, result[field])
+				}
+			}
+		})
+	}
+}
+
+// NameValidator is a custom validation function for the 'otp' tag
+func NameValidator(fl validator.FieldLevel) bool {
+	name := fl.Field().String()
+	return nameValidatePattern.MatchString(name)
+}
+
+// PhoneValidator is a custom validation function for the 'phone' tag
+func PhoneValidator(fl validator.FieldLevel) bool {
+	phone := fl.Field().String()
+	return phoneNumberValidatePattern.MatchString(phone)
 }
